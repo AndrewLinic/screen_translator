@@ -36,17 +36,25 @@ def section(name):
 # ---------- 1. Python 解释器 ----------
 section("1. Python 解释器")
 py = None
+try:
+    sys.path.insert(0, str(BASE))
+    from pylocator import candidate_pythons
+    for p in candidate_pythons():
+        print(f"{OK} 候选解释器 -> {p}")
+        py = p
+        break
+except Exception as e:
+    print(f"{WARN} 自动探测失败: {e}")
 if PYENV.exists():
     try:
-        py = json.loads(PYENV.read_text(encoding="utf-8")).get("python")
-        print(f"{OK} pyenv.json -> {py}")
-        if not Path(py).exists():
-            print(f"{BAD} 该解释器不存在! 程序将无法启动翻译 worker")
-            py = None
+        cfg_py = json.loads(PYENV.read_text(encoding="utf-8")).get("python") or ""
+        if cfg_py:
+            print(f"     pyenv.json -> {cfg_py}"
+                  + ("" if Path(cfg_py).exists() else f"  {BAD} 不存在"))
+        else:
+            print("     pyenv.json 未指定解释器（留空 = 自动探测）")
     except Exception as e:
-        print(f"{BAD} pyenv.json 解析失败: {e}")
-else:
-    print(f"{WARN} 找不到 pyenv.json，将尝试系统 python")
+        print(f"{BAD} pyenv.json 解析失败: {e}  {WARN} 建议重新运行 install_offline_translate.bat")
 if py is None:
     py = sys.executable
     print(f"{WARN} 回退使用: {py}")

@@ -19,9 +19,17 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PY = (r"C:\Users\29227\.workbuddy\binaries\python\envs\screentrans\Scripts\python.exe")
-if not Path(PY).exists():
-    PY = sys.executable
+sys.path.insert(0, str(ROOT))
+
+# 用哪个解释器跑测试：按 pylocator 的探测顺序取第一个存在的
+# （SCREENTRANS_PY -> pyenv.json -> 常见共享环境/.venv -> PATH），
+# 不再写死某台机器的绝对路径
+try:
+    from pylocator import candidate_pythons
+    _cands = candidate_pythons()
+except Exception:
+    _cands = []
+PY = _cands[0] if _cands else sys.executable
 
 
 def discover():

@@ -37,7 +37,9 @@ EXE_NAME = f"{APP}.exe"
 # 放在 exe 同级的随附脚本（不进 exe，运行时被程序或用户调用）
 AUX_FILES = [
     "offline_translate.py",          # 离线翻译 worker
-    "pyenv.json",                    # 指向 screentrans venv 的 Python
+    "pyenv.json",                    # 解释器路径（留空 = 自动探测）
+    "pylocator.py",                  # 解释器探测（随附脚本 import 它）
+    "model_fetch.py",                # 模型下载（offline_translate 自动下载用）
     "install_models.py",             # 安装 Argos 语言模型
     "install_offline_translate.bat", # 一键解锁离线翻译
     "download_assets.py",            # 下载 ecdict 词典
@@ -50,7 +52,8 @@ _SRC_SKIP_DIRS = {"dist", "dist_tmp", "build", "build_tmp", "dist_new",
                   "build_new", ".workbuddy", "assets", "logs", "data",
                   "__pycache__"}
 
-VENV_PY = r"C:\Users\29227\.workbuddy\binaries\python\envs\screentrans\Scripts\python.exe"
+# 解释器由 pylocator 自动探测（SCREENTRANS_PY -> pyenv.json -> 常见共享环境/.venv
+# -> PATH），不再写死本机绝对路径 —— 别人克隆后也能直接跑
 
 
 # --------------------------------------------------------------------------
@@ -74,10 +77,18 @@ def die(msg):
 
 
 def pick_python():
-    """优先用 screentrans venv 的 Python 来打包。"""
-    if Path(VENV_PY).exists():
-        return VENV_PY
-    log(_c(f"[警告] 未找到 {VENV_PY}，改用当前解释器打包", "yellow"))
+    """选打包用的 Python：按 pylocator 的探测顺序找一个装了 PyInstaller 的。"""
+    try:
+        from pylocator import candidate_pythons, can_import
+        for p in candidate_pythons():
+            if can_import(p, "PyInstaller", timeout=60):
+                return p
+        cands = candidate_pythons()
+        if cands:
+            log(_c(f"[警告] 未找到装了 PyInstaller 的 Python，用 {cands[0]} 打包", "yellow"))
+            return cands[0]
+    except Exception as e:
+        log(_c(f"[警告] 解释器探测失败: {e}", "yellow"))
     return sys.executable
 
 

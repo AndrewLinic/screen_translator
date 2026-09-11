@@ -14,23 +14,41 @@
 - 点击穿透：字幕窗口只显示不挡鼠标操作，全局热键一键开关
 - 字幕窗口直接拖动：左键按住工具栏/空白处即可拖
 
-## 直接使用
+![实际效果：选区红框锁定英文摘要，字幕条实时给出中文译文](docs/demo-subtitle.png)
 
-整个项目已打包成 exe，**直接双击即可使用**（离线翻译已内置，无需联网）：
+> 上图为真实运行截图：红框是识别区域，字幕条同时显示原文与译文。
+> 点字幕里的英文单词即可查音标与释义。
+
+## 直接使用（下载即用）
+
+从 [Releases](https://github.com/AndrewLinic/screen_translator/releases) 下载
+`屏幕翻译-精简版.zip`（约 250MB，不含离线翻译模型）解压后：
 
 ```
-dist\屏幕翻译\
-├── 屏幕翻译.exe           # 主程序
-├── assets\argos_models\   # 离线翻译模型（中/英/日/韩/繁，可自行增删）
+屏幕翻译\
+├── 屏幕翻译.exe           # 主程序，双击运行
+├── _internal\             # 运行时依赖（含 ECDICT 词典 77 万词条）
 ├── offline_translate.py   # 离线翻译引擎（exe 通过它调用模型）
-├── pyenv.json             # 记录可用的 Python 路径
-├── install_models.py      # 安装更多语言模型
-└── install_offline_translate.bat  # 一键安装离线翻译依赖（换机时用）
+├── model_fetch.py         # 模型下载（首次启动自动调用）
+├── install_models.py      # 手动安装/追加语言模型
+├── pyenv.json             # 解释器路径（留空 = 自动探测）
+└── install_offline_translate.bat  # 一键准备离线翻译依赖（首次使用跑一次）
 ```
+
+**首次使用**：
+1. 双击 `屏幕翻译.exe` —— OCR（系统引擎）、划词查词、字幕显示立刻可用
+2. 想用**离线翻译**：先双击 `install_offline_translate.bat` 装好 Python 依赖，
+   再双击 `屏幕翻译.exe` —— 程序发现没有模型会**自动下载中英双向（约 165MB）**，
+   进度可在字幕栏状态灯悬停查看
+3. 需要日 / 韩 / 繁等更多语言：`python install_models.py ja ko zt`
 
 > 首次启动会把模型同步到 `%LOCALAPPDATA%\ScreenTranslator\models`
 > （CTranslate2 无法加载中文路径下的模型，所以必须放到英文目录），
 > 约需 10~30 秒，之后启动就是秒开。
+>
+> 想用**高精度 OCR**（RapidOCR，误识率明显低于系统引擎）还需在同一个
+> Python 里补装：`<pyenv.json 里的 python> -m pip install rapidocr onnxruntime`。
+> 完整版（自带模型）的打包方式见下方「重新打包」。
 
 ## 开箱即用的功能（无需任何安装）
 
@@ -290,6 +308,8 @@ python main.py
 ├── offline_translate.py   # 离线翻译子进程（exe 通过它调用模型，自包含）
 ├── trans_cache.py         # 翻译缓存持久化（SQLite，跨会话复用）
 ├── install_models.py      # 下载/安装离线翻译模型（支持多语言、多镜像）
+├── model_fetch.py         # 模型下载/解压公共实现（install_models 与自动下载共用）
+├── pylocator.py           # 解释器自动探测（不写死任何机器路径）
 ├── tts.py                 # Windows SAPI 离线朗读
 ├── ocr.py                 # OCR 引擎路由(rapidocr/windows/auto) + 拉丁文误识修复链
 ├── ocr_rapid.py           # RapidOCR 客户端（管理常驻识别子进程）
@@ -313,6 +333,8 @@ python main.py
 ├── install_offline_translate.bat # 用户安装离线翻译依赖
 ├── download_assets.py     # 模型/词典下载脚本
 ├── requirements.txt       # Python 依赖清单
+├── docs/                  # README 用截图
+├── LICENSE                # MIT
 └── run.bat                # 开发模式启动脚本
 ```
 
@@ -342,7 +364,8 @@ python main.py
   "click_through": false,            // 鼠标点击穿透
   "regions": null,                   // 多区域 [(x,y,w,h),...]，非空启用多区域(最多3)
   "subtitle_geometry": null,         // 字幕窗口位置与大小 [x,y,w,h]
-  "auto_start": true                 // 启动后自动开始识别
+  "auto_start": true,                // 启动后自动开始识别
+  "auto_fetch_models": true          // 首次启动无模型时自动下载中英双向 (精简版)
 }
 ```
 
@@ -372,7 +395,7 @@ python deploy.py --keep         :: 保留 build_tmp / dist_tmp
 ```
 
 它做四件事：① 用独立的 `build_tmp` / `dist_tmp` 构建（避开安全钩子）；
-② 比对新旧 `_internal`，一致就**只换 exe**；③ 同步 `assets` 与 7 个随附脚本；
+② 比对新旧 `_internal`，一致就**只换 exe**；③ 同步 `assets` 与 9 个随附脚本；
 ④ 跑一遍回归测试。首次出包或要彻底重建时才用 `build.bat`。
 
 单独跑回归测试：
@@ -387,10 +410,31 @@ python run_tests.py v18 v19 v20 :: 只跑改到的部分（提速）
 - `_internal\`：程序本体 + PyQt5 + ECDICT 词典（约 240 MB）
 - `assets\argos_models\`：离线翻译模型（中/英/日/韩/繁共约 790 MB，可自行增删）
 
-整个 `dist\屏幕翻译\` 目录（约 890 MB）拷给别人即可运行。
+### 出发布包（上传 GitHub Releases）
+
+模型 842MB 不适合塞进仓库或让用户一次下完，所以发布包**不含模型**，
+由程序首次启动自动下载（见「直接使用」）：
+
+```bat
+python make_release.py                  :: 精简版 zip（约 210MB）★推荐
+python make_release.py --tag v1.0.0     :: 版本号写进包名
+python make_release.py --full           :: 含模型（约 900MB，自用/传盘用）
+python make_release.py --dry-run        :: 只统计不打包
+```
+
+产出在 `release\屏幕翻译-精简版[-tag].zip`，拖到
+[Releases 新建页](https://github.com/AndrewLinic/screen_translator/releases/new) 即可。
 
 > 打包踩坑：
 > - PyInstaller 清理旧产物时若被安全策略拦截，用 `--workpath`/`--distpath`
 >   指定全新临时目录再拷回来（`deploy.py` 已内置这套规避）。
 > - 目录级 `rename`/`mv` 同样会被拦，换入一律**逐文件 copy**。
 > - 打包前先确认没有旧实例在跑，否则 `_internal` 被占用换不动。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 AndrewLinic
+
+用到的第三方组件各自遵循其自身许可：Argos Translate 模型（MIT）、
+ECDICT 词典（MIT）、RapidOCR / PP-OCRv6（Apache-2.0）、PyQt5（GPL v3）、
+百度翻译开放平台 API（自有条款，需自备密钥）。

@@ -163,6 +163,11 @@ class ScreenTranslatorApp(QObject):
     # 参数: (区域id, 识别文本)
     sig_ocr_done = pyqtSignal(int, str)
 
+    # 离线模型自动下载进度 -> GUI 线程（更新状态灯提示文字）。
+    # 必须 connect：pyqtSignal 漏接会静默丢弃（曾因此让整条识别链路停死）。
+    # 参数: (状态, 提示)；状态="ready" 表示下载完成，需刷新语言菜单
+    sig_model_status = pyqtSignal(str, str)
+
     # 多区域并发安全设计:
     # - 每个区域独立状态（key/gen/pending/结果），tick 轮流扫描（每轮一个区域），
     #   OCR 耗时不会随区域数线性叠加
@@ -173,7 +178,12 @@ class ScreenTranslatorApp(QObject):
     def __init__(self):
         super().__init__()
         self.sig_show_text.connect(self._show_text_slot)
+        self.sig_model_status.connect(self._on_model_status)
         self.cfg = load_config()
+
+        # 模型下载由本进程统一负责，禁止 offline_translate 子进程也去下
+        # （否则两边同时写同一个 .part 文件会互相写坏）
+        os.environ["SCREEN_TRANSLATOR_NO_AUTO_FETCH"] = "1"
 
         # 0. 首次运行配置模型（后台）。完成前预热线程等待，避免两个进程同时拷模型
         self._models_ready_event = threading.Event()
@@ -454,6 +464,11 @@ class ScreenTranslatorApp(QObject):
         else:
             # 离线引擎未就绪。开箱即用的功能还是会工作（OCR + 词典查词）。
             self.start()
+            # 精简版发布包不带 842MB 模型 -> 后台自动下载中英双向（约 165MB）。
+            # 下完会刷新语言菜单；期间 OCR/查词/在线翻译都不受影响。
+            if self.cfg.get("auto_fetch_models", True):
+                threading.Thread(target=self._auto_fetch_models,
+                                 daemon=True).start()
             # 仅当：勾了 auto_start + Argos 未就绪 + 用户从未确认过这条提示
             # 时弹一次。已确认过（Yes/No/关窗口）就不再弹，避免每次启动骚扰。
             if (self.cfg.get("auto_start", True)
@@ -489,6 +504,68 @@ class ScreenTranslatorApp(QObject):
         pairs = [(c, OFFLINE_LANG_NAMES.get(c, c))
                  for c in sorted(shown) if c in OFFLINE_LANG_NAMES]
         self.subtitle.set_languages(pairs, cur)
+
+    # ===== 离线模型自动下载（精简版发布包不带 842MB 模型）=====
+    def _on_model_status(self, state: str, tip: str):
+        """模型下载进度回调（GUI 线程执行）。"""
+        if state == "ready":
+            # 下载完成 -> 重新查询已装语言对并刷新菜单/状态灯
+            threading.Thread(target=self._warmup_status, daemon=True).start()
+            return
+        try:
+            self.subtitle.set_engine_status(state, tip)
+        except Exception:
+            pass
+
+    def _auto_fetch_models(self):
+        """一套模型都没有时，后台自动下载中英双向（约 165MB）。
+
+        发布包为了控制体积不带模型；这里保证"下载解压后直接能用"。
+        下载期间 OCR / 查词 / 在线翻译照常工作，进度打在状态灯 tooltip 上。
+        """
+        try:
+            from translator import runtime_model_dir
+            from model_fetch import ensure_langs, models_missing, human, CORE_LANGS
+        except Exception as e:
+            log.debug("自动下载模型不可用: %s", e)
+            return
+        rt = runtime_model_dir()
+        try:
+            if not models_missing(rt):
+                return                      # 已有模型（完整版 / 上次已下过）
+        except Exception:
+            return
+
+        log.info("未发现离线模型，开始自动下载核心模型 %s -> %s", CORE_LANGS, rt)
+        self.sig_model_status.emit("pending", "正在下载离线翻译模型…")
+        last_pct = [-1]
+
+        def _on_progress(got: int, total: int):
+            if not total:
+                return
+            pct = int(got * 100 / total)
+            if pct != last_pct[0] and pct % 5 == 0:     # 每 5% 刷一次，别刷屏
+                last_pct[0] = pct
+                self.sig_model_status.emit(
+                    "pending",
+                    f"正在下载离线翻译模型 {pct}%（{human(got)}/{human(total)}）")
+
+        try:
+            done = ensure_langs(CORE_LANGS, rt, progress=_on_progress,
+                                log=lambda m: log.info("[model] %s", m))
+        except Exception as e:
+            log.warning("自动下载离线模型失败: %s", e)
+            self.sig_model_status.emit(
+                "off", "离线模型下载失败：可手动运行 install_models.py 重试")
+            return
+        if done:
+            log.info("离线模型下载完成: %s", done)
+            self.sig_model_status.emit(
+                "ready", "离线模型已就绪")
+        else:
+            log.warning("离线模型下载未获得任何包")
+            self.sig_model_status.emit(
+                "off", "离线模型下载失败：可手动运行 install_models.py 重试")
 
     def _show_first_run_hint(self):
         """首次启动提示，告知安装离线翻译的方法。

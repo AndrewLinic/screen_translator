@@ -37,6 +37,9 @@ a = Analysis(
         # OCR 词库数据（词频表 + 专名表，由 build_lexicon.py 生成）。
         # ocr._load_lexicon() 里是函数内 import，显式声明以防漏收。
         "lexicon_data",
+        # 解释器探测 + 模型自动下载：都是函数内 import，显式声明以防漏收
+        "pylocator",
+        "model_fetch",
         "PyQt5",
         "PyQt5.QtCore",
         "PyQt5.QtGui",

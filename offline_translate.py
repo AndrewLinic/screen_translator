@@ -72,6 +72,36 @@ def sync_bundled_models(dest: Path) -> bool:
     return True
 
 
+def _auto_fetch_models(rt: Path) -> bool:
+    """一套模型都没有时自己下载核心模型（中英双向，约 165MB）。
+
+    精简版发布包不带模型，这里保证"只下载 exe 也用得起来"。
+    程序自己下载时会设 SCREEN_TRANSLATOR_NO_AUTO_FETCH=1，避免两边同时下一份
+    互相写坏 ``.part`` 文件。
+    """
+    if os.environ.get("SCREEN_TRANSLATOR_NO_AUTO_FETCH"):
+        return False
+    try:
+        here = str(Path(__file__).parent)
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import model_fetch as mf
+    except Exception as e:
+        print(f"[model] 无法加载下载模块: {type(e).__name__}: {e}",
+              file=sys.stderr, flush=True)
+        return False
+    try:
+        print(f"[model] 未发现离线模型，开始下载中英双向（约 165MB）...",
+              file=sys.stderr, flush=True)
+        done = mf.ensure_langs(mf.CORE_LANGS, rt)
+        print(f"[model] 下载完成: {done}", file=sys.stderr, flush=True)
+        return bool(done)
+    except Exception as e:
+        print(f"[model] 自动下载失败: {type(e).__name__}: {e}",
+              file=sys.stderr, flush=True)
+        return False
+
+
 def setup_model_dir():
     """在 import argostranslate 之前完成的离线配置。"""
     # 禁止 stanza 联网下载分句模型（否则日/韩等模型首次翻译会卡在网络请求）
@@ -79,10 +109,19 @@ def setup_model_dir():
     os.environ.setdefault("STANZA_RESOURCES_DIR", "")
 
     rt = runtime_model_dir()
+
+    def _has(p: Path) -> bool:
+        try:
+            return p.exists() and any(p.glob("translate-*"))
+        except Exception:
+            return False
+
     try:
-        if not (rt.exists() and any(rt.glob("translate-*"))):
-            sync_bundled_models(rt)
-        if rt.exists() and any(rt.glob("translate-*")):
+        if not _has(rt):
+            sync_bundled_models(rt)          # 完整版：从 assets 同步
+        if not _has(rt):
+            _auto_fetch_models(rt)           # 精简版：自己下
+        if _has(rt):
             os.environ["ARGOS_PACKAGES_DIR"] = str(rt)
             return
     except Exception:

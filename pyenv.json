@@ -1,4 +1,6 @@
 {
-  "python": "C:/Users/29227/.workbuddy/binaries/python/envs/screentrans/Scripts/python.exe",
-  "note": "屏幕翻译使用的 Python (含 argostranslate)"
+  "python": "",
+  "note": "留空 = 自动探测。顺序: 环境变量 SCREENTRANS_PY -> 本文件 -> 项目内 .venv -> ~/.workbuddy/binaries/python/envs/screentrans -> PATH 上的 python。install_offline_translate.bat 会把本机解释器路径写到这里。",
+  "example": "C:/Python312/python.exe",
+  "extras": "高精度 OCR 需要该解释器里装了 rapidocr 与 onnxruntime: <python> -m pip install rapidocr onnxruntime"
 }

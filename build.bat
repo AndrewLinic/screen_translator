@@ -12,21 +12,33 @@ REM   - 不打包 argostranslate/sentencepiece/ctranslate2 (C 扩展打包不稳
 REM   - Argos 模型作为数据文件打包(assets/argos_models/), exe首次启动自动复制
 
 setlocal
-set PY="C:\Users\29227\.workbuddy\binaries\python\envs\screentrans\Scripts\python.exe"
-
 cd /d "%~dp0"
 
+REM 解释器自动探测（不再写死某台机器的绝对路径）：
+REM   SCREENTRANS_PY 环境变量 -> 常见共享环境 -> 项目内 .venv -> PATH
+set "PY=%SCREENTRANS_PY%"
+if not defined PY if exist "%USERPROFILE%\.workbuddy\binaries\python\envs\screentrans\Scripts\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\envs\screentrans\Scripts\python.exe"
+if not defined PY if exist "%~dp0.venv\Scripts\python.exe" set "PY=%~dp0.venv\Scripts\python.exe"
+if not defined PY where python >nul 2>nul && set "PY=python"
+if not defined PY (
+    echo [错误] 未找到 Python。请设置环境变量 SCREENTRANS_PY 指向解释器，或把 python 加入 PATH。
+    pause
+    exit /b 1
+)
+echo 使用解释器: %PY%
+echo.
+
 REM 装 PyInstaller
-%PY% -c "import PyInstaller" 2>nul
+"%PY%" -c "import PyInstaller" 2>nul
 if errorlevel 1 (
     echo 安装 PyInstaller...
-    %PY% -m pip install pyinstaller
+    "%PY%" -m pip install pyinstaller
 )
 
 REM 检查离线资源
 if not exist "assets\ecdict.csv" (
     echo [警告] 词典 assets\ecdict.csv 缺失,打包后将无法查词
-    echo        请运行: %PY% download_assets.py
+    echo        请运行: "%PY%" download_assets.py
 )
 
 REM 拷贝安装脚本到 dist
@@ -36,7 +48,7 @@ copy install_offline_translate.bat "dist\屏幕翻译\" >nul
 copy download_assets.py "dist\屏幕翻译\" >nul
 
 echo 开始打包...
-%PY% -m PyInstaller --noconfirm --clean screen_translator.spec
+"%PY%" -m PyInstaller --noconfirm --clean screen_translator.spec
 if errorlevel 1 (
     echo 打包失败
     pause
@@ -46,6 +58,8 @@ if errorlevel 1 (
 REM 随 exe 附带的脚本与模型（模型放 exe 同级 assets，不打进 exe 内部）
 copy offline_translate.py "dist\屏幕翻译\" >nul
 copy pyenv.json "dist\屏幕翻译\" >nul
+copy pylocator.py "dist\屏幕翻译\" >nul
+copy model_fetch.py "dist\屏幕翻译\" >nul
 copy install_models.py "dist\屏幕翻译\" >nul
 copy diagnose_translation.py "dist\屏幕翻译\" >nul
 REM RapidOCR 高精度识别引擎：由 pyenv.json 的 Python 以子进程方式启动，

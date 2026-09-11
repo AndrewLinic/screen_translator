@@ -344,26 +344,17 @@ def find_python_executable() -> Optional[str]:
 
     import shutil
 
-    # 0. 读 pyenv.json (最快路径；install 脚本写入前已验证过 argos 可用，
-    #    直接信任，避免每次启动都花 5~15 秒冷启动 import 探测)
+    # 0. 环境变量 / pyenv.json / 常见共享环境（最快路径；install 脚本写入前已
+    #    验证过 argos 可用，直接信任，避免每次启动都花 5~15 秒冷启动 import 探测）
+    #    include_path=False: PATH 上的 python 未必装了 argos，留到下面逐个验证
     try:
-        for base in [Path(__file__).parent,
-                     Path(sys.executable).parent if getattr(sys, "frozen", False) else None,
-                     Path.cwd()]:
-            if not base:
-                continue
-            cfg = base / "pyenv.json"
-            if cfg.exists():
-                import json
-                with open(cfg, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                p = data.get("python", "")
-                if p and Path(p).exists():
-                    _argos_python = p
-                    log.info("从 pyenv.json 加载 Python: %s", p)
-                    return p
+        from pylocator import candidate_pythons
+        for p in candidate_pythons(include_path=False):
+            _argos_python = p
+            log.info("从已配置位置加载 Python: %s", p)
+            return p
     except Exception as e:
-        log.debug("读 pyenv.json 失败: %s", e)
+        log.debug("解释器探测失败: %s", e)
 
     candidates_set = set()
     # PATH 里

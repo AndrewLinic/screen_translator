@@ -71,7 +71,7 @@ echo [4/4] 记录 Python 路径到 pyenv.json...
 (
     echo {
     echo   "python": "%PYEXE:\=\\%",
-    echo   "installed_at: "%DATE% %TIME%"
+    echo   "installed_at": "%DATE% %TIME%"
     echo }
 ) > "%~dp0pyenv.json"
 echo   写入: %~dp0pyenv.json

@@ -3,6 +3,7 @@ dist/
 build/
 build_*/
 dist_*/
+release/
 
 # ===== 运行期数据（本地生成，不入库）=====
 logs/

@@ -64,8 +64,10 @@ _python_checked = False
 
 
 def find_python() -> Optional[str]:
-    """找能 import rapidocr 的 Python（优先 pyenv.json，其次 PATH）。
+    """找能 import rapidocr 的 Python。
 
+    候选顺序由 pylocator 统一给出（SCREENTRANS_PY 环境变量 → pyenv.json →
+    常见共享环境/.venv → PATH），再逐个验证能否 import rapidocr。
     命中结果缓存；探测只做一次，避免每次识别都付冷启动代价。
     """
     global _python_cache, _python_checked
@@ -75,25 +77,10 @@ def find_python() -> Optional[str]:
 
     cands: list[str] = []
     try:
-        for base in [Path(__file__).parent,
-                     Path(sys.executable).parent if getattr(sys, "frozen", False)
-                     else None,
-                     Path.cwd()]:
-            if not base:
-                continue
-            cfg = base / "pyenv.json"
-            if cfg.exists():
-                data = json.loads(cfg.read_text(encoding="utf-8"))
-                p = data.get("python", "")
-                if p and Path(p).exists():
-                    cands.append(p)
+        from pylocator import candidate_pythons
+        cands = candidate_pythons()
     except Exception as e:
-        log.debug("读 pyenv.json 失败: %s", e)
-
-    for name in ("python", "python3", "py"):
-        p = shutil.which(name)
-        if p:
-            cands.append(p)
+        log.debug("解释器探测失败: %s", e)
 
     for p in cands:
         try:

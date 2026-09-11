@@ -328,7 +328,9 @@ python main.py
 │
 ├── screen_translator.spec # PyInstaller 打包配置
 ├── deploy.py              # ★ 一键部署：打包 + 比对 + 增量换入 + 回归
-├── run_tests.py           # 批量回归测试（自动发现 v4~v21）
+├── run_tests.py           # 批量回归测试（自动发现 v4~v22）
+├── make_release.py        # 打发布 zip（默认精简版，--full 含模型）
+├── publish_release.py     # ★ 建 GitHub Release 并上传附件（幂等）
 ├── build.bat              # 全量打包脚本（首次出包 / 彻底重建时用）
 ├── install_offline_translate.bat # 用户安装离线翻译依赖
 ├── download_assets.py     # 模型/词典下载脚本
@@ -416,14 +418,26 @@ python run_tests.py v18 v19 v20 :: 只跑改到的部分（提速）
 由程序首次启动自动下载（见「直接使用」）：
 
 ```bat
-python make_release.py                  :: 精简版 zip（约 210MB）★推荐
+python make_release.py                  :: 出精简版 zip（约 210MB）★推荐
 python make_release.py --tag v1.0.0     :: 版本号写进包名
 python make_release.py --full           :: 含模型（约 900MB，自用/传盘用）
 python make_release.py --dry-run        :: 只统计不打包
+
+python publish_release.py --tag v1.0.0  :: 建 Release 并上传附件（自动取最新 zip）
+python publish_release.py --tag v1.0.0 --replace   :: 同名附件先删后传
+python publish_release.py --tag v1.0.0 --draft     :: 存草稿
 ```
 
-产出在 `release\屏幕翻译-精简版[-tag].zip`，拖到
-[Releases 新建页](https://github.com/AndrewLinic/screen_translator/releases/new) 即可。
+`make_release.py` 产出在 `release\屏幕翻译-精简版[-tag].zip`；
+`publish_release.py` 直接调 GitHub API 建 Release 并上传，重复执行是幂等的
+（已存在就复用，附件同名则跳过）。token 自动从 Windows 凭据管理器里
+Git Credential Manager 已存的那条读取，不落盘。
+
+> 两个坑：GitHub 会把非 ASCII 附件名清洗成 `-.-`，所以脚本上传前会把包名转成
+> `screen-translator-slim-v1.0.0.zip` 这类英文名；Git Bash 里的 `curl` 是
+> schannel 版，`--cacert` 无效，所以脚本走 Python + 项目自定义 CA 包。
+> 想手动上传也可以，把 zip 拖到
+> [Releases 新建页](https://github.com/AndrewLinic/screen_translator/releases/new) 即可。
 
 > 打包踩坑：
 > - PyInstaller 清理旧产物时若被安全策略拦截，用 `--workpath`/`--distpath`

@@ -1,0 +1,19 @@
+PyQt5>=5.15
+mss>=10.0
+requests>=2.30
+Pillow>=10.0
+argostranslate>=1.9
+# winocr: Windows 10/11 自带 OCR 的 Python 封装
+# 通过 .NET WinRT 调用 Windows.Media.Ocr，无需额外系统包
+# 注意: 仅 Windows 平台可用
+winocr>=0.0.14
+# RapidOCR 高精度 OCR 引擎（可选，强烈推荐）
+# 装进"离线翻译用的那个 Python 环境"即可：exe 会以子进程方式调用它，
+# 所以 onnxruntime / opencv 不会被打进 exe（省 200MB+）。
+# 不装则自动回退 Windows OCR，功能不受影响，只是识别精度略低。
+# 安装: <pyenv.json 里的 python> -m pip install rapidocr
+rapidocr>=3.0
+# TTS 离线朗读 (Windows SAPI)
+pywin32>=306 ; sys_platform == "win32"
+# PyInstaller 用于打包成 exe
+pyinstaller>=6.0

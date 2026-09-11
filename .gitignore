@@ -1,0 +1,34 @@
+# ===== 构建产物 =====
+dist/
+build/
+build_*/
+dist_*/
+
+# ===== 运行期数据（本地生成，不入库）=====
+logs/
+data/
+
+# ===== 大体积资源（用 python download_assets.py 获取，见 README）=====
+assets/argos_models/
+assets/argos_cache/
+assets/ecdict.csv
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# ===== 工具元数据 =====
+.workbuddy/
+
+# ===== 临时截图 =====
+_shot*.png

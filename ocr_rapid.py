@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,9 @@ log = logging.getLogger(__name__)
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 _REQ_TIMEOUT = 30.0      # 单次识别超时（秒）——首次含模型加载留足余量
 _READY_TIMEOUT = 120.0   # 子进程启动 + 模型加载
+_RETRY_COOLDOWN = 30.0   # 启动/通信失败后冷却多久再重试（秒）。
+                          # 之前是永久禁用 (_disabled=True)，首次启动偶发失败
+                          # 就导致整个会话永远回退 Windows OCR；改为冷却后自动重试。
 
 
 def _script_path() -> Optional[Path]:
@@ -104,7 +108,7 @@ class RapidOcrClient:
         self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
         self._id = 0
-        self._disabled = False
+        self._disabled_until = 0.0   # 冷却截止时间戳（0=未禁用）；失败后 _RETRY_COOLDOWN 秒内不重试
         self._log_fp = None
         self._err_count = 0
         self._last_error = ""
@@ -113,18 +117,18 @@ class RapidOcrClient:
     def _ensure_proc(self) -> bool:
         if self._proc is not None and self._proc.poll() is None:
             return True
-        if self._disabled:
-            return False
+        if time.time() < self._disabled_until:
+            return False  # 冷却中: 最近启动/通信失败，等 _RETRY_COOLDOWN 秒后自动重试
         script = _script_path()
         py = find_python()
         if not script or not py:
-            self._disabled = True
+            self._disabled_until = time.time() + _RETRY_COOLDOWN
             return False
         try:
             if self._log_fp is None:
                 self._log_fp = open(_log_dir() / "ocr_worker.log", "a",
                                     encoding="utf-8", errors="ignore")
-            self._log_fp.write(f"\n===== {__import__('time').strftime('%Y-%m-%d %H:%M:%S')} "
+            self._log_fp.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} "
                                f"启动 {py} {script} =====\n")
             self._log_fp.flush()
             self._proc = subprocess.Popen(
@@ -150,13 +154,13 @@ class RapidOcrClient:
                 self._last_error = "RapidOCR 子进程启动超时"
                 log.warning(self._last_error)
                 self._kill()
-                self._disabled = True
+                self._disabled_until = time.time() + _RETRY_COOLDOWN
                 return False
             if not line:
                 self._last_error = "RapidOCR 子进程无响应（rapidocr 未安装？）"
                 log.warning(self._last_error)
                 self._kill()
-                self._disabled = True
+                self._disabled_until = time.time() + _RETRY_COOLDOWN
                 return False
             self._err_count = 0
             log.info("RapidOCR 引擎就绪")
@@ -165,7 +169,7 @@ class RapidOcrClient:
             self._last_error = f"启动 RapidOCR 失败: {e}"
             log.warning(self._last_error)
             self._kill()
-            self._disabled = True
+            self._disabled_until = time.time() + _RETRY_COOLDOWN
             return False
 
     def _kill(self) -> None:
@@ -215,7 +219,7 @@ class RapidOcrClient:
                 self._last_error = f"RapidOCR 通信失败: {e}"
                 log.warning(self._last_error)
                 self._kill()
-                self._disabled = True
+                self._disabled_until = time.time() + _RETRY_COOLDOWN
                 return None
             if resp is None or not resp.get("ok"):
                 self._err_count += 1
@@ -241,7 +245,7 @@ class RapidOcrClient:
             self._last_error = "RapidOCR 识别超时"
             log.warning(self._last_error)
             self._kill()
-            self._disabled = True
+            self._disabled_until = time.time() + _RETRY_COOLDOWN
             return None
         if not line:
             return None
@@ -253,7 +257,7 @@ class RapidOcrClient:
     # ---------- 状态 ----------
     @property
     def disabled(self) -> bool:
-        return self._disabled
+        return time.time() < self._disabled_until
 
     @property
     def last_error(self) -> str:

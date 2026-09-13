@@ -1099,9 +1099,16 @@ class ScreenTranslatorApp(QObject):
             if key == st["key"]:
                 return  # 内容没变，不重复翻译
             # 近似去重: OCR 噪声会让每帧文本有 1~2 个字符差异，差异小于
-            # 5% 视为同一内容，避免无限重译
-            if st["key"] and difflib.SequenceMatcher(
-                    None, key, st["key"]).ratio() > 0.95:
+            # 5% 视为同一内容，避免无限重译。
+            # 但逐字字幕场景下，完整文本与"差几字"的文本相似度 >95%，
+            # 会被近似去重挡掉，导致最终结果不被识别（投票完成后画面不再
+            # 变化，永远不重识别）。投票完成时（画面已稳定 vote_frames 帧），
+            # 绕过近似去重，强制确认最终投票结果。
+            vote_frames = max(1, int(self.cfg.get("vote_frames", _VOTE_FRAMES)))
+            vote_done = st.get("vote_tries", 0) >= vote_frames
+            if (not vote_done and st["key"]
+                    and difflib.SequenceMatcher(
+                        None, key, st["key"]).ratio() > 0.95):
                 return
             st["key"] = key
             st["text"] = text

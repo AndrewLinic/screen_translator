@@ -468,10 +468,7 @@ class ScreenTranslatorApp(QObject):
             # 仅当：用户从未确认过这条提示时弹一次。已确认过（Yes/No/关窗口）就不再弹。
             if not self.cfg.get("first_run_hinted", False):
                 QTimer.singleShot(2000, self._show_first_run_hint)
-        # 启动后先等待用户框选区域，框选确认后才开始 OCR（不再自动全屏识别）。
-        # offscreen 测试环境下跳过（模态对话框会挂起，测试不模拟用户输入）。
-        if os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
-            QTimer.singleShot(800, lambda: self.choose_region(auto_start=True))
+        # 启动后保持停止状态，不自动弹选区；用户通过托盘菜单自行决定何时选区/开始。
         # 后台预热: 拉起离线 worker 加载模型 + 查已安装语言对，
         # 完成后刷新托盘语言菜单（首次约 10~30 秒）
         threading.Thread(target=self._warmup_status, daemon=True).start()

@@ -449,6 +449,11 @@ class _ArgosWorker:
             self._queue = _q.Queue()
 
             def _pump():
+                # 先取本地引用：_kill()（退出/失败路径）会把 self._queue 置
+                # None 来唤醒等待者，本线程随后仍会走 finally —— 若直接访问
+                # self._queue 会抛 'NoneType' object has no attribute 'put'
+                # （每次退出都出现一条崩溃 traceback 的根因）。
+                q = self._queue
                 try:
                     for line in self.proc.stdout:
                         data = None
@@ -462,16 +467,22 @@ class _ArgosWorker:
                             if pq is not None:
                                 pq.put(data)
                                 continue
-                        self._queue.put(line)
+                        q.put(line)
                 except Exception:
                     pass
                 finally:
-                    self._queue.put(None)
+                    try:
+                        q.put(None)
+                    except Exception:
+                        pass
                     with self._pending_lock:
                         waiters = list(self._pending.values())
                         self._pending.clear()
                     for wq in waiters:
-                        wq.put(None)
+                        try:
+                            wq.put(None)
+                        except Exception:
+                            pass
 
             self._reader = threading.Thread(target=_pump, daemon=True)
             self._reader.start()

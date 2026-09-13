@@ -23,6 +23,29 @@ class SettingsDialog(QDialog):
         self._cfg = load_config()
         self._build()
 
+    def showEvent(self, event):
+        """对话框显示前从配置重新刷新所有下拉框值，确保与磁盘配置一致。
+
+        某些环境下 __init__ 中读取的配置可能与实际不符（如 exe 打包后的
+        时序问题），在 showEvent 中再刷一次保证显示正确。
+        """
+        super().showEvent(event)
+        self._cfg = load_config()
+        # 刷新所有下拉框
+        self.engine_combo.setCurrentIndex(
+            self._find_index(self.engine_combo, self._cfg.get("engine_mode", "offline_first")))
+        self.from_combo.setCurrentIndex(
+            self._find_index(self.from_combo, self._cfg.get("source_lang", "auto")))
+        self.to_combo.setCurrentIndex(
+            self._find_index(self.to_combo, self._cfg.get("target_lang", "zh")))
+        self.ocr_combo.setCurrentIndex(
+            self._find_index(self.ocr_combo, self._cfg.get("ocr_lang", "zh-Hans-CN")))
+        self.ocr_engine_combo.setCurrentIndex(
+            self._find_index(self.ocr_engine_combo, self._cfg.get("ocr_engine", "rapidocr")))
+        self.interval_spin.setValue(int(self._cfg.get("interval_ms", 1000)))
+        self.font_spin.setValue(int(self._cfg.get("font_size", 16)))
+        self.show_original_chk.setChecked(bool(self._cfg.get("show_original", True)))
+
     def _build(self):
         root = QVBoxLayout(self)
         # 全局字号加大

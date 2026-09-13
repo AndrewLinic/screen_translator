@@ -452,28 +452,26 @@ class ScreenTranslatorApp(QObject):
         # deep=False: 只做文件级快速检查，不在 GUI 线程拉起 worker 加载模型
         st = engine_status(deep=False)
         if st["argos_available"]:
-            if self.cfg.get("auto_start", True):
-                self.start()
             self.tray.showMessage(
                 "屏幕翻译已启动",
-                "正在实时识别屏幕并翻译。\n"
-                "右键托盘图标可 切换语言 / 选区 / 退出。",
+                "请框选需要翻译的区域。\n右键托盘图标可 切换语言 / 选区 / 退出。",
                 QSystemTrayIcon.Information,
                 4000,
             )
         else:
             # 离线引擎未就绪。开箱即用的功能还是会工作（OCR + 词典查词）。
-            self.start()
             # 精简版发布包不带 842MB 模型 -> 后台自动下载中英双向（约 165MB）。
             # 下完会刷新语言菜单；期间 OCR/查词/在线翻译都不受影响。
             if self.cfg.get("auto_fetch_models", True):
                 threading.Thread(target=self._auto_fetch_models,
                                  daemon=True).start()
-            # 仅当：勾了 auto_start + Argos 未就绪 + 用户从未确认过这条提示
-            # 时弹一次。已确认过（Yes/No/关窗口）就不再弹，避免每次启动骚扰。
-            if (self.cfg.get("auto_start", True)
-                    and not self.cfg.get("first_run_hinted", False)):
+            # 仅当：用户从未确认过这条提示时弹一次。已确认过（Yes/No/关窗口）就不再弹。
+            if not self.cfg.get("first_run_hinted", False):
                 QTimer.singleShot(2000, self._show_first_run_hint)
+        # 启动后先等待用户框选区域，框选确认后才开始 OCR（不再自动全屏识别）。
+        # offscreen 测试环境下跳过（模态对话框会挂起，测试不模拟用户输入）。
+        if os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
+            QTimer.singleShot(800, lambda: self.choose_region(auto_start=True))
         # 后台预热: 拉起离线 worker 加载模型 + 查已安装语言对，
         # 完成后刷新托盘语言菜单（首次约 10~30 秒）
         threading.Thread(target=self._warmup_status, daemon=True).start()
@@ -660,7 +658,8 @@ class ScreenTranslatorApp(QObject):
         self.subtitle.set_region_chips(
             len(regions) if multi else 0, self._active_region)
 
-    def choose_region(self):
+    def choose_region(self, auto_start=False):
+        """弹出区域框选。auto_start=True 时确认后自动开始识别（用于启动流程）。"""
         self.subtitle.hide()
         for ov in self._overlays:
             ov.hide()
@@ -675,17 +674,35 @@ class ScreenTranslatorApp(QObject):
             self._reset_region_states()
             self._sync_overlays()
             x, y, w, h = region
-            self.tray.showMessage(
-                "已选区域",
-                f"位置: ({x}, {y})  尺寸: {w} × {h}\n"
-                f"屏幕上会用红框标出识别范围",
-                QSystemTrayIcon.Information,
-                2500,
-            )
+            if auto_start:
+                self.start()
+                self.tray.showMessage(
+                    "已选区域，开始识别",
+                    f"位置: ({x}, {y})  尺寸: {w} × {h}\n"
+                    f"右键托盘可 停止 / 切换语言 / 重新选区。",
+                    QSystemTrayIcon.Information,
+                    3000,
+                )
+            else:
+                self.tray.showMessage(
+                    "已选区域",
+                    f"位置: ({x}, {y})  尺寸: {w} × {h}\n"
+                    f"屏幕上会用红框标出识别范围",
+                    QSystemTrayIcon.Information,
+                    2500,
+                )
         else:
             # 取消选择：恢复显示原有区域指示框
             self._sync_overlays()
-            self.tray.showMessage("已取消", "未选择区域", QSystemTrayIcon.Information, 1500)
+            if auto_start:
+                self.tray.showMessage(
+                    "未选区域",
+                    "右键托盘可「选择识别区域」或「识别整个主屏幕」后开始识别。",
+                    QSystemTrayIcon.Information,
+                    4000,
+                )
+            else:
+                self.tray.showMessage("已取消", "未选择区域", QSystemTrayIcon.Information, 1500)
 
     def add_region(self):
         """多区域模式: 追加一个识别区域（最多 3 个）。"""

@@ -97,7 +97,14 @@ def get_engine(lang: str) -> tuple:
 
 
 def _order_lines(boxes, txts) -> list:
-    """按“视觉行”排序（同一行的框先合并再按 x 排），还原自然阅读顺序。"""
+    """按"视觉行"排序（同一行的框先合并再按 x 排），还原自然阅读顺序。
+
+    同框间距判定（用框多边形的实际右边缘计算真实 gap，不再用 len(text) 估算）:
+      - gap < 0.15 * h_med（或重叠/负值）: 同一单词被检测模型拆成多框
+        （如 "unfamiliar" -> "ufa"+"mili"+"ar"），直接拼接不加空格
+      - 0.15 * h_med <= gap <= 1.5 * h_med: 正常词间距，加 1 个空格
+      - gap > 1.5 * h_med: 大间距（如两列布局），加 4 个空格
+    """
     if boxes is None or len(boxes) == 0:
         return []
     rows = []
@@ -106,9 +113,10 @@ def _order_lines(boxes, txts) -> list:
             continue
         xs = [float(p[0]) for p in box]
         ys = [float(p[1]) for p in box]
-        x0, y0 = min(xs), min(ys)
+        x0, x1 = min(xs), max(xs)
+        y0 = min(ys)
         h = max(ys) - min(ys)
-        rows.append({"x": x0, "y": y0, "h": max(1.0, h), "t": text})
+        rows.append({"x": x0, "x1": x1, "y": y0, "h": max(1.0, h), "t": text})
     if not rows:
         return []
     heights = sorted(r["h"] for r in rows)
@@ -118,11 +126,17 @@ def _order_lines(boxes, txts) -> list:
     for r in rows:
         if out and abs(r["y"] - out[-1]["y"]) < 0.6 * h_med:
             prev = out[-1]
-            sep = "    " if r["x"] - prev["x1"] > 1.5 * h_med else " "
+            gap = r["x"] - prev["x1"]
+            if gap < 0.15 * h_med:
+                sep = ""       # 同一单词被拆成多框，直接拼接
+            elif gap > 1.5 * h_med:
+                sep = "    "   # 大间距（多列/缩进）
+            else:
+                sep = " "      # 正常词间距
             prev["t"] += sep + r["t"]
-            prev["x1"] = max(prev["x1"], r["x"] + len(r["t"]))
+            prev["x1"] = max(prev["x1"], r["x1"])
         else:
-            out.append({"y": r["y"], "x1": r["x"], "t": r["t"],
+            out.append({"y": r["y"], "x1": r["x1"], "t": r["t"],
                         "w": max(1.0, h_med), "h": r["h"]})
     return [(r["t"], (int(0), int(r["y"]), int(r["w"]), int(r["h"])))
             for r in out]

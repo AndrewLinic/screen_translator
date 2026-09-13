@@ -214,7 +214,7 @@ class ScreenTranslatorApp(QObject):
         if self.cfg.get("click_through"):
             self.subtitle.set_click_through(True)
         # 把字幕的信号接到 main
-        self.subtitle.request_select_region.connect(self.choose_region)
+        self.subtitle.request_select_region.connect(lambda: self.choose_region(auto_start=True))
         self.subtitle.request_quit.connect(self.quit_app)
         self.subtitle.request_history.connect(self.show_history)
         self.subtitle.request_manual_translate.connect(self._manual_translate)

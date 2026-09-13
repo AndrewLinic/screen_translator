@@ -340,7 +340,7 @@ class ScreenTranslatorApp(QObject):
 
         # 选区
         act_select = menu.addAction("⬜ 选择识别区域…")
-        act_select.triggered.connect(self.choose_region)
+        act_select.triggered.connect(lambda: self.choose_region(auto_start=True))
 
         act_fullscreen = menu.addAction("🖥 识别整个主屏幕")
         act_fullscreen.triggered.connect(self.use_fullscreen)
